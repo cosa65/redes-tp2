@@ -4,6 +4,8 @@ import scapy.all as sp
 
 #Esto lo hice viendo como changos se usaba el scapy, haganle lo que quieran, acuerdense de correr con sudo
 
+# Se corre asi: sudo python traceroute.py <IP a pingear> <maximo ttl de mis paquetes>
+
 #################Defines###############
 myanswers=0			# Estas cosas estan para que se entienda mas que estas haciendo
 myreplies=1			# cuando accedes a los elementos de replies[]
@@ -12,6 +14,8 @@ myreplypackage=1 	#
 
 req = sp.IP(dst="216.58.202.4")/sp.ICMP()
 timerange = 10								#default
+
+
 
 if len(sys.argv) == 2:						#setear manualmente IP destino
 	req.dst = sys.argv[1]				
