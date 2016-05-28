@@ -44,8 +44,8 @@ for i in range(1,timerange+1):
 	replies.append(answer[0])
 	recpack = replies[i-1][myanswers][myreplypackage]
 
-##############ESTO LO PODEMO SACAR SI QUEREMO##############
-	if(aterminal):
+
+	if(verbose):
 		if (recpack.type == 11):
 			print("Time Exceeded from:")
 		elif (recpack.type == 0):
