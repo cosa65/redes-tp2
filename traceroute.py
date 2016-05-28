@@ -2,9 +2,7 @@ import sys
 import os
 import scapy.all as sp
 
-#Esto lo hice viendo como changos se usaba el scapy, haganle lo que quieran, acuerdense de correr con sudo
-
-# Se corre asi: sudo python traceroute.py <IP a pingear> <maximo ttl de mis paquetes>
+# Se corre asi: "sudo python traceroute.py <IP destino> <maximo ttl de mis paquetes>"
 
 #################Defines###############
 myanswers=0			# Estas cosas estan para que se entienda mas que estas haciendo
