@@ -8,7 +8,8 @@ from datetime import datetime
 
 repets = 3			#cantidad de veces que queres que envia paquete de igual ttl (para promediar)
 verbose = 1			#lo ves en la terminal o no
-
+triesmax = 2		#cantidad de veces que queres probar de vuelta si hay timeouts sucesivos
+timeout = 25		#cantidad de tiempo a considerar como timeout
 #################Defines###############
 myanswers=0			# Estas cosas estan para que se entienda mas que estas haciendo
 myreplies=1			# cuando accedes a los elementos de replies[]
@@ -28,25 +29,41 @@ if len(sys.argv) == 3:						#setear manualmente cantidad de echo requests sucesi
 times = []
 replies = []
 
+tries = triesmax
+
 for i in range(1,timerange+1):
 	req.ttl = i
 	times.append(0);
 
 	
 	for j in range(0,repets):
-		start = datetime.now()
-		answer = sp.sr(req, timeout = 10, verbose = 0)
-		end = datetime.now()
-		times[i-1] += end.microsecond - start.microsecond + ((end.second - start.second) * 1000000)
-	times[i-1] = times[i-1]/repets
 
+		start = datetime.now()
+		answer = sp.sr(req, timeout = 30, verbose = 0)
+		end = datetime.now()
+
+		huboTimeout = (end.second - start.second >= timeout)
+		
+		if(huboTimeout):
+			--j
+			--tries
+			print("Hubo un timeout, repitiendo")
+
+			if(tries==0):
+				print("hay algun problema en el camino, wacho")
+				sys.exit()
+
+		else:
+			tries = triesmax
+			times[i-1] += ( (end.microsecond - start.microsecond)/1000 + (end.second - start.second)*1000 )/repets
+
+
+	
 	
 	replies.append(answer[0])
 	recpack = replies[i-1][myanswers][myreplypackage]
 
 
-	if(recpack.type == 0):
-		jmps = i
 
 
 ######################ESTO SI LO QUERES EN LA TERMINAL#####
@@ -62,6 +79,13 @@ for i in range(1,timerange+1):
 		print(str(times[i-1]))
 		print("\n")
 ###########################################################
+
+	if(recpack.type == 0):
+		jmps = i
+		timerange = jmps
+		break;
+
+##########################
 
 file = open("test/test.txt", "w")
 
