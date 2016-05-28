@@ -1,0 +1,10 @@
+Time Exceeded from: 192.168.1.1 RTT: 58480
+Time Exceeded from: 200.3.60.10 RTT: 63861
+Time Exceeded from: 200.3.93.69 RTT: 254531
+Time Exceeded from: 190.225.252.166 RTT: 74515
+Time Exceeded from: 181.88.0.162 RTT: 79752
+Time Exceeded from: 209.85.251.86 RTT: 62528
+Time Exceeded from: 209.85.252.42 RTT: 115864
+Time Exceeded from: 216.239.58.221 RTT: 90452
+Echo Reply from: 216.58.202.4 RTT: 94578
+Echo Reply from: 216.58.202.4 RTT: 98416
