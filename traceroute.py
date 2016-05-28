@@ -18,9 +18,9 @@ myreplypackage=1 	#
 req = sp.IP(dst="216.58.202.4")/sp.ICMP()
 timerange = 10								#default
 
+jmps=0
 
-
-if len(sys.argv) == 2:						#setear manualmente IP destino
+if len(sys.argv) >= 2:						#setear manualmente IP destino
 	req.dst = sys.argv[1]				
 if len(sys.argv) == 3:						#setear manualmente cantidad de echo requests sucesivos a mandar
 	timerange = int(sys.argv[2])
@@ -45,6 +45,11 @@ for i in range(1,timerange+1):
 	recpack = replies[i-1][myanswers][myreplypackage]
 
 
+	if(recpack.type == 0):
+		jmps = i
+
+
+######################ESTO SI LO QUERES EN LA TERMINAL#####
 	if(verbose):
 		if (recpack.type == 11):
 			print("Time Exceeded from:")
@@ -57,7 +62,7 @@ for i in range(1,timerange+1):
 		print(str(times[i-1]))
 		print("\n")
 ###########################################################
-	
+
 file = open("test/test.txt", "w")
 
 for i in range(0, timerange):
@@ -73,5 +78,9 @@ for i in range(0, timerange):
 	file.write(" RTT: ")
 	file.write(str(times[i]))
 	file.write("\n")
+
+
+file.write("jumps hasta llegar: ")
+file.write(str(jmps))
 
 file.close()
