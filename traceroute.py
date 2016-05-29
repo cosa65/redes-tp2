@@ -55,7 +55,7 @@ for i in range(1,timerange+1):
 
 		else:
 			tries = triesmax
-			times[i-1] += ( (end.microsecond - start.microsecond)/1000 + (end.second - start.second)*1000 )/repets
+			times[i-1] += ( (end.microsecond - start.microsecond)/1000 + (end.second - start.second)*1000 + (end.minute - start.minute)*60000)/repets
 
 
 	
@@ -106,5 +106,6 @@ for i in range(0, timerange):
 
 file.write("jumps hasta llegar: ")
 file.write(str(jmps))
+file.write("\n")
 
 file.close()
