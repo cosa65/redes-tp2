@@ -2,6 +2,7 @@
 # NOTES: run as root. To install dependencies: sudo pip3 install scapy-python3
 import scapy.all as sp
 import numpy as np
+import sys
 import time
 import requests
 
@@ -26,9 +27,6 @@ if len(sys.argv) >= 6:
 if len(sys.argv) >= 7:
 	max_ttl = sys.argv[6]
 
-def get_geolocation_data(ip):
-	request = requests.get('https://freegeoip.net/json/'+ip)
-	return request.json()
 	
 def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3, packet_timeout=0.2):
 	packets = sp.IP(
@@ -43,8 +41,6 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 		packets = packets/sp.UDP()/sp.DNS(qd=sp.DNSQR(qname='whatever.com'))
 	else:
 		raise Exception('Unknown scan type')
-
-	trace = {}
 
 	for packet in packets:
 		packet_start = time.perf_counter()
@@ -81,19 +77,21 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 
 		packet_end = time.perf_counter()
 
-		current = {
+		host = {
 			'ttl': packet.ttl,
-			'inaccurate': len(answers) < accuracy,
-			'time': packet_end - packet_start,
-			'sent': sent,
-			'received': recv,
 			'failed': len(answers) == 0,
-			# TODO: convert these two into json or something like that
-			'packet': packet,
-			'all_answers': answers
+			'inaccurate': len(answers) < accuracy,
+			'traceroute': {
+				'time': packet_end - packet_start,
+				'sent_packets': sent,
+				'received_packets': recv,
+				# TODO: convert these two into json or something like that
+				'packet': packet,
+				'answers': answers
+			}
 		}
 
-		if not current['failed']:
+		if not host['failed']:
 			# Classify answers by source ip
 			ips = {}
 
@@ -120,31 +118,105 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 
 			rtts = [answer[0] for answer in selected]
 
-			current.update({
-				'most_frequent_ip': selected_ip,
-				'most_frequent_src_packets': selected,
-				'most_frequent_rtt_avg': np.average(rtts),
-				'most_frequent_rtt_stdev': np.std(rtts),
-				'failed': False
+			host.update({
+				'failed': False,
+				'selected': {
+					'ip': selected_ip,
+					'packets': selected,
+				}
 			})
-		else:
-			# TODO: all attempts failed
-			pass
 
-		trace[current['ttl']] = current
+		yield host
 
 		if finished:
 			break
 
-	return trace
+def geolocate(host):
+	def get_geolocation_data(ip):
+		json = {}
+
+		try:
+			request = requests.get('http://ip-api.com/json/'+ip)
+			json = request.json()
+		except:
+			json = {'status': 'fail'}
+
+		if json['status'] != 'success':
+			return None
+		else:
+			return json
+
+	geoip = get_geolocation_data(host['selected']['ip'])
+
+	if geoip is not None:
+		host['selected']['geolocation'] = geoip
+
+	return host
+
+def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
+	measures = []
+	rtts = []
+
+	packet = sp.IP(dst=host['selected']['ip'])
+
+	if scan == 'icmp':
+		packet = packet/sp.ICMP()
+	elif scan == 'tcp':
+		packet = packet/sp.TCP(dport=80, flags='S')
+	elif scan == 'udp':
+		packet = packet/sp.UDP()/sp.DNS(qd=sp.DNSQR(qname='whatever.com'))
+	else:
+		raise Exception('Unknown scan type')
+
+	for iteration in range(accuracy):
+		rtt = time.perf_counter()
+		measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
+		rtt = time.perf_counter() - rtt
+
+		if measure is not None:
+			measures.append((rtt, measure))
+			rtts.append(rtt)
+
+	if len(measures) > 0:
+		host['selected']['ping'] = {
+			'accuracy': accuracy,
+			'measures': measures,
+			'rtt_avg': np.average(rtts),
+			'rtt_stdev': np.std(rtts)
+		}
+	elif scan=='icmp':
+		host = estimate_rtt(host, accuracy, 2*packet_timeout, 'tcp')
+
+	return host
 
 def print_traceroute(trace):
-	for ttl in trace:
-		if trace[ttl]['failed']:
-			print(ttl, '*')
+	for host in trace:
+		if host['failed']:
+			print(host['ttl'], '*')
 		else:
-			geoip = get_geolocation_data(trace[ttl]['most_frequent_ip'])
-			print(ttl, trace[ttl]['most_frequent_ip'], trace[ttl]['most_frequent_rtt_avg'], geoip['country_code'], geoip['city'])
+			host = geolocate(host)
+			host = estimate_rtt(host)
+
+			try:
+				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
+				continue
+			except:
+				pass
+
+			try:
+				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'])
+				continue
+			except:
+				pass
+
+			try:
+				print(host['ttl'], host['selected']['ip'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
+				continue
+			except:
+				pass
+
+			print(host['ttl'], host['selected']['ip'])
+
 
 # TODO: meter el objeto trace en mongodb, asi lo levantamos sabrosamente con tableau 
 
