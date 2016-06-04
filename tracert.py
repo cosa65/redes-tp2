@@ -5,6 +5,7 @@ import numpy as np
 import sys
 import time
 import requests
+from scipy import stats
 
 # TODO: tomar parametros por consola para hacer esta chota
 host = "google.com"
@@ -12,7 +13,7 @@ scan = "tcp" # ICMP, UDP or TCP
 accuracy = 20 # Number of measures we want per TTL
 retries_per_attempt = 3 # Maximum number of times to attempt to measure
 packet_timeout = 0.2 # In fractional seconds
-max_ttl = 50 # Maximum route length
+max_ttl = 10 # Maximum route length
 
 if len(sys.argv) >= 2:
 	host = sys.argv[1]              
@@ -189,13 +190,34 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 
 	return host
 
+def cimbala(trace):
+	if len(trace) > 0:
+		mean = np.mean([host['selected']['ping']['rtt_avg'] for host in trace])
+		std = np.std([host['selected']['ping']['rtt_avg'] for host in trace])
+
+		for host in trace:
+			host['absDev'] = abs(mean - host['selected']['ping']['rtt_avg'])
+
+		maxAbsDHostIndex, maxAbsDHostElement = max(enumerate(trace), key=lambda item: item[1]['absDev'])
+		print(str(maxAbsDHostElement))
+		delta = maxAbsDHostElement['absDev']
+		n = len(trace)
+		t = stats.t.ppf(0.05, n - 2)
+		tau = (t * (n - 1)) / (np.sqrt(n) * np.sqrt(n - 2 + t**2))
+		if delta > (t * tau):
+			print("Enlace intercontinetal encontrado: " + str(trace[maxAbsDHostIndex]) + "-" + str(trace[maxAbsDHostIndex - 1]))
+			trace.pop(maxAbsDHostIndex)
+			return cimbala(trace)
+
 def print_traceroute(trace):
+	total = []
 	for host in trace:
 		if host['failed']:
 			print(host['ttl'], '*')
 		else:
 			host = geolocate(host)
 			host = estimate_rtt(host)
+			total.append(host)
 
 			try:
 				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
@@ -216,8 +238,9 @@ def print_traceroute(trace):
 				pass
 
 			print(host['ttl'], host['selected']['ip'])
+	return total
 
 
-# TODO: meter el objeto trace en mongodb, asi lo levantamos sabrosamente con tableau 
 
-print_traceroute(traceroute(host, scan, accuracy, max_ttl, retries_per_attempt, packet_timeout))
+# TODO: meter el objeto trace en mongodb, asi lo levantamos sabrosamente con tableau
+cimbala(print_traceroute(traceroute(host, scan, accuracy, max_ttl, retries_per_attempt, packet_timeout)))
