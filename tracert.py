@@ -192,20 +192,23 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 
 def cimbala(trace):
 	if len(trace) > 0:
+		print("lista no vacia")
 		mean = np.mean([host['selected']['ping']['rtt_avg'] for host in trace])
+		print("mean: " + str(mean))
 		std = np.std([host['selected']['ping']['rtt_avg'] for host in trace])
+		print("std: " + str(std))
 
 		for host in trace:
 			host['absDev'] = abs(mean - host['selected']['ping']['rtt_avg'])
+			print("host absdev: " + str(host['absDev']))
 
 		maxAbsDHostIndex, maxAbsDHostElement = max(enumerate(trace), key=lambda item: item[1]['absDev'])
-		print(str(maxAbsDHostElement))
 		delta = maxAbsDHostElement['absDev']
 		n = len(trace)
-		t = stats.t.ppf(0.05, n - 2)
+		t = stats.t.ppf(1 - 0.025, n - 2)
 		tau = (t * (n - 1)) / (np.sqrt(n) * np.sqrt(n - 2 + t**2))
-		if delta > (t * tau):
-			print("Enlace intercontinetal encontrado: " + str(trace[maxAbsDHostIndex]) + "-" + str(trace[maxAbsDHostIndex - 1]))
+		if delta > (std * tau):
+			print("Enlace intercontinetal encontrado hacia: " + str(trace[maxAbsDHostIndex]['selected']['ip']))
 			trace.pop(maxAbsDHostIndex)
 			return cimbala(trace)
 
@@ -217,7 +220,8 @@ def print_traceroute(trace):
 		else:
 			host = geolocate(host)
 			host = estimate_rtt(host)
-			total.append(host)
+			if 'ping' in host['selected']:
+				total.append(host)
 
 			try:
 				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
