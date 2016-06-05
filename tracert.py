@@ -13,7 +13,7 @@ scan = "tcp" # ICMP, UDP or TCP
 accuracy = 20 # Number of measures we want per TTL
 retries_per_attempt = 3 # Maximum number of times to attempt to measure
 packet_timeout = 0.2 # In fractional seconds
-max_ttl = 10 # Maximum route length
+max_ttl = 50 # Maximum route length
 
 if len(sys.argv) >= 2:
 	host = sys.argv[1]              
@@ -190,27 +190,31 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 
 	return host
 
-def cimbala(trace):
+def cimbalaRec(trace):
 	if len(trace) > 0:
-		print("lista no vacia")
-		mean = np.mean([host['selected']['ping']['rtt_avg'] for host in trace])
-		print("mean: " + str(mean))
-		std = np.std([host['selected']['ping']['rtt_avg'] for host in trace])
-		print("std: " + str(std))
+		mean = np.mean([host['selected']['ping']['rtt_cim'] for host in trace])
+		std = np.std([host['selected']['ping']['rtt_cim'] for host in trace])
 
 		for host in trace:
-			host['absDev'] = abs(mean - host['selected']['ping']['rtt_avg'])
-			print("host absdev: " + str(host['absDev']))
+			host['selected']['ping']['absDev'] = abs(mean - host['selected']['ping']['rtt_cim'])
 
-		maxAbsDHostIndex, maxAbsDHostElement = max(enumerate(trace), key=lambda item: item[1]['absDev'])
-		delta = maxAbsDHostElement['absDev']
+		#maxAbsDHostElement representa el router con mayor |mean - rtt_cim| de todos, va a ser el posible outlier en cada paso de la recursion
+		maxAbsDHostIndex, maxAbsDHostElement = max(enumerate(trace), key=lambda item: item[1]['selected']['ping']['absDev'])
+		delta = maxAbsDHostElement['selected']['ping']['absDev']
 		n = len(trace)
 		t = stats.t.ppf(1 - 0.025, n - 2)
 		tau = (t * (n - 1)) / (np.sqrt(n) * np.sqrt(n - 2 + t**2))
 		if delta > (std * tau):
 			print("Enlace intercontinetal encontrado hacia: " + str(trace[maxAbsDHostIndex]['selected']['ip']))
 			trace.pop(maxAbsDHostIndex)
-			return cimbala(trace)
+			cimbalaRec(trace)
+
+def cimbala(trace):
+	#rtt_cim va a ser el rtt del salto de un router al siguiente, todos los calculos de cimbala se hacen en base a este valor
+	trace[0]['selected']['ping']['rtt_cim'] = trace[0]['selected']['ping']['rtt_avg']
+	for i in range(1, len(trace)):
+		trace[i]['selected']['ping']['rtt_cim'] = trace[i]['selected']['ping']['rtt_avg'] - trace[i - 1]['selected']['ping']['rtt_cim']
+	cimbalaRec(trace)
 
 def print_traceroute(trace):
 	total = []
