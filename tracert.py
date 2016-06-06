@@ -6,12 +6,13 @@ import sys
 import time
 import requests
 from scipy import stats
+from collections import defaultdict
 
 # TODO: tomar parametros por consola para hacer esta chota
 host = "google.com"
-scan = "tcp" # ICMP, UDP or TCP
-accuracy = 20 # Number of measures we want per TTL
-retries_per_attempt = 3 # Maximum number of times to attempt to measure
+scan = "icmp" # ICMP, UDP or TCP
+accuracy = 2 # Number of measures we want per TTL
+retries_per_attempt = 2 # Maximum number of times to attempt to measure
 packet_timeout = 0.2 # In fractional seconds
 max_ttl = 50 # Maximum route length
 
@@ -27,7 +28,6 @@ if len(sys.argv) >= 6:
 	packet_timeout = sys.argv[5]
 if len(sys.argv) >= 7:
 	max_ttl = sys.argv[6]
-
 	
 def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3, packet_timeout=0.2):
 	packets = sp.IP(
@@ -35,7 +35,8 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 		dst=sp.Net(host))
 
 	if scan == 'icmp':
-		packets = packets/sp.ICMP()
+		packets = packets/sp.ICMP(seq=0x1)
+		iid = 9999
 	elif scan == 'tcp':
 		packets = packets/sp.TCP(dport=80, flags='S')
 	elif scan == 'udp':
@@ -54,8 +55,10 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 		for attempt in range(accuracy):
 			rtt = received = None
 			success = False
-
 			for retry in range(retries_per_attempt):
+				if scan == 'icmp':
+					packet.getlayer(sp.ICMP).id = iid
+					iid += 1
 				rtt = time.perf_counter()
 				received = sp.sr1(packet, timeout=packet_timeout, verbose = 0)
 				rtt = time.perf_counter() - rtt
@@ -79,6 +82,7 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 		packet_end = time.perf_counter()
 
 		host = {
+			'dst': sp.Net(host),
 			'ttl': packet.ttl,
 			'failed': len(answers) == 0,
 			'inaccurate': len(answers) < accuracy,
@@ -94,33 +98,18 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 
 		if not host['failed']:
 			# Classify answers by source ip
-			ips = {}
+			ips = defaultdict(list)
 
 			for (rtt, answer) in answers:
-				try:
-					ips[answer.src]
-				except:
-					ips[answer.src] = []
-
 				ips[answer.src].append((rtt, answer))
 
 			# Select ip based on the number of answers, and whichever happened last
-			selected = None
-			selected_ip = ''
-
-			for ip in ips:
-				if selected is None:
-					selected = ips[ip]
-					selected_ip = ip
-				else:
-					if len(selected) <= len(ips[ip]):
-						selected = ips[ip]
-						selected_ip = ip
+			
+			selected_ip, selected = max(ips.items(), key=lambda a: len(a[1]))
 
 			rtts = [answer[0] for answer in selected]
 
 			host.update({
-				'failed': False,
 				'selected': {
 					'ip': selected_ip,
 					'packets': selected,
@@ -154,14 +143,15 @@ def geolocate(host):
 
 	return host
 
-def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
+def estimate_rtt(host, accuracy = 20, packet_timeout=0.5, max_retries=40, scan='icmp'):
 	measures = []
 	rtts = []
 
 	packet = sp.IP(dst=host['selected']['ip'])
 
 	if scan == 'icmp':
-		packet = packet/sp.ICMP()
+		packet = packet/sp.ICMP(seq=0x1)
+		iid = 9999
 	elif scan == 'tcp':
 		packet = packet/sp.TCP(dport=80, flags='S')
 	elif scan == 'udp':
@@ -170,6 +160,9 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 		raise Exception('Unknown scan type')
 
 	for iteration in range(accuracy):
+		if scan == 'icmp':
+			packet.getlayer(sp.ICMP).id = iid
+			iid += 1
 		rtt = time.perf_counter()
 		measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
 		rtt = time.perf_counter() - rtt
@@ -177,6 +170,23 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 		if measure is not None:
 			measures.append((rtt, measure))
 			rtts.append(rtt)
+
+	retries = 0
+	packet.getlayer(sp.IP).dst = host['dst']
+	packet.getlayer(sp.IP).ttl = host['ttl']
+	while len(measures) < accuracy or retries >= max_retries:
+		if scan == 'icmp':
+			packet.getlayer(sp.ICMP).id = iid
+			iid += 1
+		rtt = time.perf_counter()
+		measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
+		rtt = time.perf_counter() - rtt
+
+		if measure is not None:
+			measures.append((rtt, measure))
+			rtts.append(rtt)
+
+	# print('--ertt: ip={}, measures={}'.format(host['selected']['ip'],len(measures)))
 
 	if len(measures) > 0:
 		host['selected']['ping'] = {
@@ -186,9 +196,7 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 			'rtt_stdev': np.std(rtts)
 		}
 	elif scan=='icmp':
-		host = estimate_rtt(host, accuracy, 2*packet_timeout, 'tcp')
-
-	return host
+		estimate_rtt2(host)
 
 def cimbalaRec(trace):
 	if len(trace) > 0:
@@ -223,7 +231,7 @@ def print_traceroute(trace):
 			print(host['ttl'], '*')
 		else:
 			host = geolocate(host)
-			host = estimate_rtt(host)
+			estimate_rtt(host)
 			if 'ping' in host['selected']:
 				total.append(host)
 
