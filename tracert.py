@@ -17,7 +17,7 @@ packet_timeout = 0.2 # In fractional seconds
 max_ttl = 50 # Maximum route length
 
 if len(sys.argv) >= 2:
-	host = sys.argv[1]              
+	host = sys.argv[1]
 if len(sys.argv) >= 3:
 	scan = sys.argv[2]
 if len(sys.argv) >= 4:
@@ -28,11 +28,11 @@ if len(sys.argv) >= 6:
 	packet_timeout = sys.argv[5]
 if len(sys.argv) >= 7:
 	max_ttl = sys.argv[6]
-	
-def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3, packet_timeout=0.2):
+
+def traceroute(dhost, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3, packet_timeout=0.2):
 	packets = sp.IP(
 		ttl=(1, max_ttl),
-		dst=sp.Net(host))
+		dst=sp.Net(dhost))
 
 	if scan == 'icmp':
 		packets = packets/sp.ICMP(seq=0x1)
@@ -82,7 +82,7 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 		packet_end = time.perf_counter()
 
 		host = {
-			'dst': sp.Net(host),
+			'dst': sp.Net(dhost),
 			'ttl': packet.ttl,
 			'failed': len(answers) == 0,
 			'inaccurate': len(answers) < accuracy,
@@ -104,7 +104,7 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 				ips[answer.src].append((rtt, answer))
 
 			# Select ip based on the number of answers, and whichever happened last
-			
+
 			selected_ip, selected = max(ips.items(), key=lambda a: len(a[1]))
 
 			rtts = [answer[0] for answer in selected]
@@ -159,17 +159,17 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.5, max_retries=40, scan='
 	else:
 		raise Exception('Unknown scan type')
 
-	for iteration in range(accuracy):
-		if scan == 'icmp':
-			packet.getlayer(sp.ICMP).id = iid
-			iid += 1
-		rtt = time.perf_counter()
-		measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
-		rtt = time.perf_counter() - rtt
+	# for iteration in range(accuracy):
+	# 	if scan == 'icmp':
+	# 		packet.getlayer(sp.ICMP).id = iid
+	# 		iid += 1
+	# 	rtt = time.perf_counter()
+	# 	measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
+	# 	rtt = time.perf_counter() - rtt
 
-		if measure is not None:
-			measures.append((rtt, measure))
-			rtts.append(rtt)
+	# 	if measure is not None:
+	# 		measures.append((rtt, measure))
+	# 		rtts.append(rtt)
 
 	retries = 0
 	packet.getlayer(sp.IP).dst = host['dst']
@@ -195,8 +195,6 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.5, max_retries=40, scan='
 			'rtt_avg': np.average(rtts),
 			'rtt_stdev': np.std(rtts)
 		}
-	elif scan=='icmp':
-		estimate_rtt2(host)
 
 def cimbalaRec(trace):
 	if len(trace) > 0:
