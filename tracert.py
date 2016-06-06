@@ -141,8 +141,6 @@ def geolocate(host):
 	if geoip is not None:
 		host['selected']['geolocation'] = geoip
 
-	return host
-
 def estimate_rtt(host, accuracy = 20, packet_timeout=0.5, max_retries=40, scan='icmp'):
 	measures = []
 	rtts = []
@@ -228,30 +226,20 @@ def print_traceroute(trace):
 		if host['failed']:
 			print(host['ttl'], '*')
 		else:
-			host = geolocate(host)
+			geolocate(host)
 			estimate_rtt(host)
+
+			output = [host['ttl'], host['selected']['ip']]
 			if 'ping' in host['selected']:
 				total.append(host)
+				output.append(host['selected']['ping']['rtt_avg'])
 
-			try:
-				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
-				continue
-			except:
-				pass
-
-			try:
-				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'])
-				continue
-			except:
-				pass
-
-			try:
-				print(host['ttl'], host['selected']['ip'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
-				continue
-			except:
-				pass
-
-			print(host['ttl'], host['selected']['ip'])
+			if 'geolocation' in host['selected']:
+				if 'countryCode' in host['selected']['geolocation']:
+					output.append(host['selected']['geolocation']['countryCode'])
+				if 'regionName' in host['selected']['geolocation']:
+					output.append(host['selected']['geolocation']['regionName'])
+			print(' '.join([str(o) for o in output]))
 	return total
 
 
