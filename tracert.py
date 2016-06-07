@@ -217,12 +217,14 @@ def cimbalaRec(trace):
 
 def cimbala(trace):
 	#rtt_cim va a ser el rtt del salto de un router al siguiente, todos los calculos de cimbala se hacen en base a este valor
-	trace[0]['selected']['ping']['rtt_cim'] = trace[0]['selected']['ping']['rtt_avg']
-	print('IP={} Avg={} StdD={} Cim={}'.format(trace[0]['selected']['ip'],trace[0]['selected']['ping']['rtt_avg'],trace[0]['selected']['ping']['rtt_stdev'],trace[0]['selected']['ping']['rtt_cim']))
 	for i in range(1, len(trace)):
-		trace[i]['selected']['ping']['rtt_cim'] = trace[i]['selected']['ping']['rtt_avg'] - trace[i - 1]['selected']['ping']['rtt_cim']
-		print('IP={} Avg={} StdD={} Cim={}'.format(trace[i]['selected']['ip'],trace[i]['selected']['ping']['rtt_avg'],trace[i]['selected']['ping']['rtt_stdev'],trace[i]['selected']['ping']['rtt_cim']))
-	cimbalaRec(trace)
+		trace[i]['selected']['ping']['rtt_cim'] = trace[i]['selected']['ping']['rtt_avg'] - trace[i - 1]['selected']['ping']['rtt_avg']
+		# print('IP={} Avg={} StdD={} Cim={}'.format(
+		# 			trace[i]['selected']['ip'],
+		# 			trace[i]['selected']['ping']['rtt_avg'],
+		# 			trace[i]['selected']['ping']['rtt_stdev'],
+		# 			trace[i]['selected']['ping']['rtt_cim']))
+	cimbalaRec(trace[1:])
 
 def print_traceroute(trace):
 	total = []
