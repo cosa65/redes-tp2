@@ -6,13 +6,14 @@ import sys
 import time
 import requests
 from scipy import stats
+import random
 
 # TODO: tomar parametros por consola para hacer esta chota
 host = "google.com"
 scan = "tcp" # ICMP, UDP or TCP
 accuracy = 20 # Number of measures we want per TTL
 retries_per_attempt = 3 # Maximum number of times to attempt to measure
-packet_timeout = 0.2 # In fractional seconds
+packet_timeout = 1 # In fractional seconds
 max_ttl = 50 # Maximum route length
 
 if len(sys.argv) >= 2:
@@ -57,6 +58,10 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 
 			for retry in range(retries_per_attempt):
 				rtt = time.perf_counter()
+
+				if scan == 'icmp':
+					packet.getlayer(sp.ICMP).id = random.randint(0, 65535)
+
 				received = sp.sr1(packet, timeout=packet_timeout, verbose = 0)
 				rtt = time.perf_counter() - rtt
 				sent += 1
@@ -80,6 +85,7 @@ def traceroute(host, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3,
 
 		host = {
 			'ttl': packet.ttl,
+			'destination': packet.dst,
 			'failed': len(answers) == 0,
 			'inaccurate': len(answers) < accuracy,
 			'traceroute': {
@@ -152,13 +158,11 @@ def geolocate(host):
 	if geoip is not None:
 		host['selected']['geolocation'] = geoip
 
-	return host
-
-def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
+def estimate_rtt(host, accuracy = 20, packet_timeout=0.5, max_retries=40, scan='udp'):
 	measures = []
 	rtts = []
 
-	packet = sp.IP(dst=host['selected']['ip'])
+	packet = sp.IP(dst=host['destination'], ttl=host['ttl'])
 
 	if scan == 'icmp':
 		packet = packet/sp.ICMP()
@@ -169,7 +173,12 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 	else:
 		raise Exception('Unknown scan type')
 
-	for iteration in range(accuracy):
+	retries = 0
+
+	while len(measures) < accuracy or retries >= max_retries:
+		if scan == 'icmp':
+			packet.getlayer(sp.ICMP).id = random.randint(0, 65535)
+
 		rtt = time.perf_counter()
 		measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
 		rtt = time.perf_counter() - rtt
@@ -182,72 +191,58 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.2, scan='icmp'):
 		host['selected']['ping'] = {
 			'accuracy': accuracy,
 			'measures': measures,
+			'rtt_min' : min(rtts),
 			'rtt_avg': np.average(rtts),
 			'rtt_stdev': np.std(rtts)
 		}
-	elif scan=='icmp':
-		host = estimate_rtt(host, accuracy, 2*packet_timeout, 'tcp')
-
-	return host
 
 def cimbalaRec(trace):
-	if len(trace) > 0:
-		mean = np.mean([host['selected']['ping']['rtt_cim'] for host in trace])
-		std = np.std([host['selected']['ping']['rtt_cim'] for host in trace])
+	if len(trace) == 0:
+		return
+	mean = np.mean([host['selected']['ping']['rtt_cim'] for host in trace])
+	std = np.std([host['selected']['ping']['rtt_cim'] for host in trace])
 
-		for host in trace:
-			host['selected']['ping']['absDev'] = abs(mean - host['selected']['ping']['rtt_cim'])
+	for host in trace:
+		host['selected']['ping']['absDev'] = abs(mean - host['selected']['ping']['rtt_cim'])
 
-		#maxAbsDHostElement representa el router con mayor |mean - rtt_cim| de todos, va a ser el posible outlier en cada paso de la recursion
-		maxAbsDHostIndex, maxAbsDHostElement = max(enumerate(trace), key=lambda item: item[1]['selected']['ping']['absDev'])
-		delta = maxAbsDHostElement['selected']['ping']['absDev']
-		n = len(trace)
-		t = stats.t.ppf(1 - 0.025, n - 2)
-		tau = (t * (n - 1)) / (np.sqrt(n) * np.sqrt(n - 2 + t**2))
-		if delta > (std * tau):
-			print("Enlace intercontinetal encontrado hacia: " + str(trace[maxAbsDHostIndex]['selected']['ip']))
-			trace.pop(maxAbsDHostIndex)
-			cimbalaRec(trace)
+	#maxAbsDHostElement representa el router con mayor |mean - rtt_cim| de todos, va a ser el posible outlier en cada paso de la recursion
+	maxAbsDHostIndex, maxAbsDHostElement = max(enumerate(trace), key=lambda item: item[1]['selected']['ping']['absDev'])
+	delta = maxAbsDHostElement['selected']['ping']['absDev']
+	n = len(trace)
+	t = stats.t.ppf(1 - 0.025, n - 2)
+	tau = (t * (n - 1)) / (np.sqrt(n) * np.sqrt(n - 2 + t**2))
+	if delta > (std * tau):
+		print("Enlace intercontinetal encontrado hacia: " + str(trace[maxAbsDHostIndex]['selected']['ip']))
+		trace.pop(maxAbsDHostIndex)
+		cimbalaRec(trace)
 
 def cimbala(trace):
 	#rtt_cim va a ser el rtt del salto de un router al siguiente, todos los calculos de cimbala se hacen en base a este valor
-	trace[0]['selected']['ping']['rtt_cim'] = trace[0]['selected']['ping']['rtt_avg']
 	for i in range(1, len(trace)):
-		trace[i]['selected']['ping']['rtt_cim'] = trace[i]['selected']['ping']['rtt_avg'] - trace[i - 1]['selected']['ping']['rtt_cim']
-	cimbalaRec(trace)
+		trace[i]['selected']['ping']['rtt_cim'] = trace[i]['selected']['ping']['rtt_avg'] - trace[i - 1]['selected']['ping']['rtt_avg']
+	cimbalaRec(trace[1:])
 
 def print_traceroute(trace):
 	total = []
 	for host in trace:
 		if host['failed']:
-			print(host['ttl'], '*')
+			print('{}	{}'.format(host['ttl'], '*'))
 		else:
-			host = geolocate(host)
-			host = estimate_rtt(host)
+			geolocate(host)
+			estimate_rtt(host, accuracy, packet_timeout, accuracy*2)
+
+			output = [str(host['ttl']), host['selected']['ip']]
 			if 'ping' in host['selected']:
 				total.append(host)
+				output.append('%.4f' % float(host['selected']['ping']['rtt_avg']))
 
-			try:
-				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
-				continue
-			except:
-				pass
-
-			try:
-				print(host['ttl'], host['selected']['ip'], host['selected']['ping']['rtt_avg'])
-				continue
-			except:
-				pass
-
-			try:
-				print(host['ttl'], host['selected']['ip'], host['selected']['geolocation']['countryCode'], host['selected']['geolocation']['regionName'])
-				continue
-			except:
-				pass
-
-			print(host['ttl'], host['selected']['ip'])
+			if 'geolocation' in host['selected']:
+				if 'countryCode' in host['selected']['geolocation']:
+					output.append(host['selected']['geolocation']['countryCode'])
+				if 'regionName' in host['selected']['geolocation']:
+					output.append(host['selected']['geolocation']['regionName'])
+			print('	'.join(output))
 	return total
-
 
 
 # TODO: meter el objeto trace en mongodb, asi lo levantamos sabrosamente con tableau
