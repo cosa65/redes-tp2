@@ -21,13 +21,13 @@ if len(sys.argv) >= 2:
 if len(sys.argv) >= 3:
 	scan = sys.argv[2]
 if len(sys.argv) >= 4:
-	accuracy = sys.argv[3]
+	accuracy = int(sys.argv[3])
 if len(sys.argv) >= 5:
-	retries_per_attempt = sys.argv[4]
+	retries_per_attempt = int(sys.argv[4])
 if len(sys.argv) >= 6:
-	packet_timeout = sys.argv[5]
+	packet_timeout = float(sys.argv[5])
 if len(sys.argv) >= 7:
-	max_ttl = sys.argv[6]
+	max_ttl = int(sys.argv[6])
 
 def traceroute(dhost, scan='tcp', accuracy=20, max_ttl=50, retries_per_attempt=3, packet_timeout=0.2):
 	packets = sp.IP(
@@ -190,6 +190,7 @@ def estimate_rtt(host, accuracy = 20, packet_timeout=0.5, max_retries=40, scan='
 		host['selected']['ping'] = {
 			'accuracy': accuracy,
 			'measures': measures,
+			'rtt_min' : min(rtts),
 			'rtt_avg': np.average(rtts),
 			'rtt_stdev': np.std(rtts)
 		}
@@ -217,30 +218,32 @@ def cimbalaRec(trace):
 def cimbala(trace):
 	#rtt_cim va a ser el rtt del salto de un router al siguiente, todos los calculos de cimbala se hacen en base a este valor
 	trace[0]['selected']['ping']['rtt_cim'] = trace[0]['selected']['ping']['rtt_avg']
+	print('IP={} Avg={} StdD={} Cim={}'.format(trace[0]['selected']['ip'],trace[0]['selected']['ping']['rtt_avg'],trace[0]['selected']['ping']['rtt_stdev'],trace[0]['selected']['ping']['rtt_cim']))
 	for i in range(1, len(trace)):
 		trace[i]['selected']['ping']['rtt_cim'] = trace[i]['selected']['ping']['rtt_avg'] - trace[i - 1]['selected']['ping']['rtt_cim']
+		print('IP={} Avg={} StdD={} Cim={}'.format(trace[i]['selected']['ip'],trace[i]['selected']['ping']['rtt_avg'],trace[i]['selected']['ping']['rtt_stdev'],trace[i]['selected']['ping']['rtt_cim']))
 	cimbalaRec(trace)
 
 def print_traceroute(trace):
 	total = []
 	for host in trace:
 		if host['failed']:
-			print(host['ttl'], '*')
+			print('{}	{}'.format(host['ttl'], '*'))
 		else:
 			geolocate(host)
-			estimate_rtt(host)
+			estimate_rtt(host, accuracy, packet_timeout, accuracy*2)
 
-			output = [host['ttl'], host['selected']['ip']]
+			output = [str(host['ttl']), host['selected']['ip']]
 			if 'ping' in host['selected']:
 				total.append(host)
-				output.append(host['selected']['ping']['rtt_avg'])
+				output.append('%.4f' % float(host['selected']['ping']['rtt_avg']))
 
 			if 'geolocation' in host['selected']:
 				if 'countryCode' in host['selected']['geolocation']:
 					output.append(host['selected']['geolocation']['countryCode'])
 				if 'regionName' in host['selected']['geolocation']:
 					output.append(host['selected']['geolocation']['regionName'])
-			print('	'.join([str(o) for o in output]))
+			print('	'.join(output))
 	return total
 
 
