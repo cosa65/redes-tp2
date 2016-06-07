@@ -1,12 +1,20 @@
 #!/usr/bin/python3
 # NOTES: run as root. To install dependencies: sudo pip3 install scapy-python3
-import scapy.all as sp
 import numpy as np
 import sys
 import time
 import requests
+import logging
 from scipy import stats
 from collections import defaultdict
+from os import getuid
+
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+import scapy.all as sp
+
+if getuid() != 0:
+	print('This script needs to run as root')
+	exit(1)
 
 # TODO: tomar parametros por consola para hacer esta chota
 host = "google.com"
