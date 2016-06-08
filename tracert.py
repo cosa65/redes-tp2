@@ -8,7 +8,7 @@ import logging
 import random
 from scipy import stats
 from collections import defaultdict
-from os import getuid
+from os import getuid, stat
 
 
 def traceroute(destination, scan, accuracy, max_ttl, retries_per_attempt, packet_timeout):
@@ -405,7 +405,7 @@ def ping(host, accuracy=30, packet_timeout=0.5, max_retries=40, scan='icmp'):
             measure = sp.sr1(packet, timeout=packet_timeout, verbose=0)
             rtt = time.perf_counter() - rtt
 
-            if measure is not None:
+            if measure is not None and measure.src == host['selected']['ip']:
                 success = True
                 break
 
@@ -522,10 +522,20 @@ def cimbala(trace):
 def dump(filename, trace):
     import csv
 
-    with open(filename, 'w') as handle:
+    writeHeader = True
+
+    try:
+        if stat(filename).st_size > 0:
+            writeHeader = False
+    except:
+        pass
+
+    with open(filename, 'a') as handle:
         fields = ['destination', 'ttl', 'ip', 'rtt', 'continent', 'country', 'detected_intercontinental', 'expected_intercontinental']
         writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
+
+        if writeHeader:
+            writer.writeheader()
 
         prevContinent = None
 
@@ -576,7 +586,7 @@ traceroute_scan = "icmp" # ICMP, UDP or TCP
 traceroute_accuracy = 2 # Number of measures we want per TTL
 traceroute_retries_per_attempt = 2 # Maximum number of times to attempt to measure
 traceroute_packet_timeout = 0.2 # In fractional seconds
-traceroute_max_ttl = 30 # Maximum route length
+traceroute_max_ttl = 50 # Maximum route length
 
 if len(sys.argv) >= 2:
     host = sys.argv[1]
@@ -591,7 +601,7 @@ if len(sys.argv) >= 6:
 if len(sys.argv) >= 7:
     traceroute_max_ttl = int(sys.argv[6])
 
-dump(host + '.csv', 
+dump('host.csv', 
     cimbala(
         print_traceroute(
             augment(
